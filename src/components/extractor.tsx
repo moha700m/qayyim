@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import {
   Check,
   Copy,
@@ -6,8 +6,7 @@ import {
   Link2,
   LoaderCircle,
   MapPin,
-  Share2,
-  Star,
+  Nfc,
 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -23,6 +22,7 @@ import {
   type ReviewLinks,
 } from "@/lib/maps/parse";
 import { cn } from "@/lib/utils";
+import { canWriteWebNfc, fitsNtag213, nfcPayloadBytes, writeUrlToNfcTag } from "@/lib/nfc";
 
 const HISTORY_KEY = "qayyim-history-v1";
 
@@ -66,15 +66,13 @@ export function Extractor() {
   const [result, setResult] = useState<ReviewLinks | null>(null);
   const [copied, setCopied] = useState<string | null>(null);
   const [history, setHistory] = useState<HistoryItem[]>([]);
+  const [nfcWriting, setNfcWriting] = useState(false);
+  const [webNfc, setWebNfc] = useState(false);
 
   useEffect(() => {
     setHistory(loadHistory());
+    setWebNfc(canWriteWebNfc());
   }, []);
-
-  const canShare = useMemo(
-    () => typeof navigator !== "undefined" && typeof navigator.share === "function",
-    [],
-  );
 
   function remember(links: ReviewLinks) {
     const item: HistoryItem = {
@@ -128,14 +126,19 @@ export function Extractor() {
     }
   }
 
-  async function onShare(url: string) {
+  async function onWriteNfc(url: string) {
+    setNfcWriting(true);
     try {
-      await navigator.share({
-        title: "رابط تقييم قوقل",
-        url,
-      });
-    } catch {
-      await onCopy(url, "share", "رابط التقييم");
+      await writeUrlToNfcTag(url);
+      toast.success("كُتب الرابط على الشريحة. لمس للتحقق.");
+    } catch (error) {
+      const message =
+        error instanceof Error
+          ? error.message
+          : "قرّب الشريحة ثم أعد المحاولة، أو انسخ الرابط إلى NFC Tools.";
+      toast.error(message);
+    } finally {
+      setNfcWriting(false);
     }
   }
 
@@ -184,7 +187,7 @@ export function Extractor() {
           </p>
         ) : (
           <p className="mt-3 text-sm text-fg-subtle">
-            اقبل روابط المشاركة القصيرة والروابط الكاملة ومعرّف المكان.
+            اقبل رابط المشاركة القصير أو الرابط الكامل. الناتج يُكتب على شريحة NFC.
           </p>
         )}
         <div className="mt-4 flex flex-wrap gap-2">
@@ -229,41 +232,59 @@ export function Extractor() {
             </div>
 
             <LinkRow
-              icon={<Star className="size-4" />}
-              label="رابط كتابة تقييم"
-              hint="أرسله للعملاء — يفتح نموذج التقييم مباشرة"
+              icon={<Nfc className="size-4" />}
+              label="رابط الشريحة"
+              hint="اكتبه كسجل URL — اللمس يفتح نموذج التقييم"
               value={result.writeReviewUrl}
               copied={copied === "write"}
-              onCopy={() => onCopy(result.writeReviewUrl, "write", "رابط كتابة التقييم")}
+              onCopy={() => onCopy(result.writeReviewUrl, "write", "رابط الشريحة")}
               primary
             />
+            <p className="mt-2 text-xs text-fg-subtle">
+              {fitsNtag213(result.writeReviewUrl)
+                ? `جاهز لشريحة NTAG213 وأكبر — ${nfcPayloadBytes(result.writeReviewUrl)} بايت`
+                : "الرابط أطول من سعة NTAG213. استخدم NTAG215 أو 216."}
+            </p>
             <div className="mt-3 flex flex-col gap-2 sm:flex-row">
               <Button
                 type="button"
                 className="flex-1"
-                onClick={() => onCopy(result.writeReviewUrl, "write", "رابط كتابة التقييم")}
+                onClick={() => onCopy(result.writeReviewUrl, "write", "رابط الشريحة")}
               >
                 {copied === "write" ? <Check /> : <Copy />}
-                نسخ رابط التقييم
+                نسخ للشريحة
               </Button>
-              {canShare ? (
+              {webNfc ? (
                 <Button
                   type="button"
                   variant="secondary"
                   className="flex-1"
-                  onClick={() => void onShare(result.writeReviewUrl)}
+                  disabled={nfcWriting}
+                  onClick={() => void onWriteNfc(result.writeReviewUrl)}
                 >
-                  <Share2 />
-                  مشاركة
+                  {nfcWriting ? <LoaderCircle className="animate-spin" /> : <Nfc />}
+                  اكتب على الشريحة
                 </Button>
               ) : null}
               <Button type="button" variant="outline" asChild>
                 <a href={result.writeReviewUrl} target="_blank" rel="noreferrer">
                   <ExternalLink />
-                  فتح
+                  تجربة الرابط
                 </a>
               </Button>
             </div>
+            {!webNfc ? (
+              <ol className="mt-4 space-y-2 text-sm text-fg-muted">
+                <li>١. انسخ رابط الشريحة أعلاه.</li>
+                <li>٢. افتح تطبيق NFC Tools على الجوال.</li>
+                <li>٣. أضف سجلاً من نوع URL / URI والصق الرابط.</li>
+                <li>٤. اكتب على الشريحة، ثم لمسها بهاتف ثانٍ للتجربة.</li>
+              </ol>
+            ) : (
+              <p className="mt-4 text-sm text-fg-muted">
+                اضغط «اكتب على الشريحة» وقرّبها من خلف الهاتف. على الآيفون استخدم NFC Tools بعد النسخ.
+              </p>
+            )}
           </div>
 
           <div className="grid gap-4 sm:grid-cols-[1fr_auto]">
@@ -305,9 +326,9 @@ export function Extractor() {
 
       <section className="grid gap-3 sm:grid-cols-3">
         {[
-          { n: "١", t: "افتح المكان", d: "من خرائط قوقل على الجوال أو المتصفح." },
-          { n: "٢", t: "انسخ رابط المشاركة", d: "مشاركة ثم نسخ الرابط." },
-          { n: "٣", t: "الصقه هنا", d: "نُخرج رابط التقييم وباركوده فوراً." },
+          { n: "١", t: "استخرج الرابط", d: "من رابط المشاركة في خرائط قوقل." },
+          { n: "٢", t: "انسخه للشريحة", d: "رابط التقييم القصير، مو رابط المشاركة." },
+          { n: "٣", t: "اكتبه كـ URL", d: "NFC Tools → سجل رابط → اكتب ثم لمس للتجربة." },
         ].map((step) => (
           <div key={step.n} className="rounded-[24px] bg-elevated/80 px-4 py-4 shadow-border">
             <p className="font-display text-xl text-accent">{step.n}</p>
