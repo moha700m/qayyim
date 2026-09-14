@@ -12,6 +12,7 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { QrMark } from "@/components/qr-mark";
+import { MessageTemplates } from "@/components/message-templates";
 import { resolveMapsShare } from "@/lib/maps/resolve.functions";
 import {
   SAMPLE_FULL_URL,
@@ -286,6 +287,13 @@ export function Extractor() {
               </p>
             )}
           </div>
+
+          <MessageTemplates
+            name={result.name ?? "المكان"}
+            url={result.writeReviewUrl}
+            copied={copied === "msg"}
+            onCopy={(text) => void onCopy(text, "msg", "الرسالة")}
+          />
 
           <div className="grid gap-4 sm:grid-cols-[1fr_auto]">
             <div className="flex flex-col gap-3 rounded-[28px] bg-elevated p-5 shadow-border">
