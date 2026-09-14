@@ -1,4 +1,4 @@
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ClipboardEvent, type ReactNode } from "react";
 import {
   Check,
   Copy,
@@ -10,13 +10,13 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { QrMark } from "@/components/qr-mark";
 import { MessageTemplates } from "@/components/message-templates";
 import { resolveMapsShare } from "@/lib/maps/resolve.functions";
 import {
   SAMPLE_FULL_URL,
   SAMPLE_SHARE_URL,
+  looksLikeMapsShare,
   needsUnfurl,
   parsePlaceFromText,
   toReviewLinks,
@@ -69,10 +69,17 @@ export function Extractor() {
   const [history, setHistory] = useState<HistoryItem[]>([]);
   const [nfcWriting, setNfcWriting] = useState(false);
   const [webNfc, setWebNfc] = useState(false);
+  const extractTimer = useRef<number | null>(null);
 
   useEffect(() => {
     setHistory(loadHistory());
     setWebNfc(canWriteWebNfc());
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      if (extractTimer.current) window.clearTimeout(extractTimer.current);
+    };
   }, []);
 
   function remember(links: ReviewLinks) {
@@ -119,6 +126,30 @@ export function Extractor() {
     }
   }
 
+  function extractNow(value: string) {
+    if (extractTimer.current) {
+      window.clearTimeout(extractTimer.current);
+      extractTimer.current = null;
+    }
+    void extract(value);
+  }
+
+  function queueExtract(value: string) {
+    if (!looksLikeMapsShare(value)) return;
+    if (extractTimer.current) window.clearTimeout(extractTimer.current);
+    extractTimer.current = window.setTimeout(() => {
+      void extract(value);
+    }, 350);
+  }
+
+  function onPasteShare(event: ClipboardEvent<HTMLTextAreaElement>) {
+    const text = event.clipboardData.getData("text");
+    if (!text.trim()) return;
+    setRaw(text);
+    if (error) setError(null);
+    if (looksLikeMapsShare(text)) extractNow(text);
+  }
+
   async function onCopy(value: string, key: string, label: string) {
     const ok = await copyText(value, label);
     if (ok) {
@@ -155,23 +186,33 @@ export function Extractor() {
         <label htmlFor="maps-url" className="mb-3 block text-sm font-medium text-fg-muted">
           رابط المشاركة
         </label>
-        <div className="flex flex-col gap-3 sm:flex-row">
-          <Input
+        <div className="flex flex-col gap-3">
+          <textarea
             id="maps-url"
             dir="ltr"
-            inputMode="url"
+            rows={3}
             autoCapitalize="off"
             autoCorrect="off"
             spellCheck={false}
-            placeholder="https://maps.app.goo.gl/…"
+            enterKeyHint="go"
+            placeholder="الصق رابط المشاركة هنا — حتى لو معه اسم المكان"
             value={raw}
+            onPaste={onPasteShare}
             onChange={(event) => {
-              setRaw(event.target.value);
+              const value = event.target.value;
+              setRaw(value);
               if (error) setError(null);
+              queueExtract(value);
             }}
-            className="text-left font-mono text-sm"
+            onKeyDown={(event) => {
+              if (event.key === "Enter" && !event.shiftKey) {
+                event.preventDefault();
+                extractNow(raw);
+              }
+            }}
+            className="min-h-24 w-full rounded-xl border border-border bg-surface px-4 py-3 text-left font-mono text-sm text-fg shadow-border transition-[border-color,box-shadow] duration-(--motion-quick) ease-(--ease-out) placeholder:font-sans placeholder:text-fg-subtle focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-bg"
           />
-          <Button type="submit" size="lg" className="sm:min-w-36" disabled={loading}>
+          <Button type="submit" size="lg" disabled={loading}>
             {loading ? (
               <>
                 <LoaderCircle className="animate-spin" />
@@ -188,7 +229,7 @@ export function Extractor() {
           </p>
         ) : (
           <p className="mt-3 text-sm text-fg-subtle">
-            اقبل رابط المشاركة القصير أو الرابط الكامل. الناتج يُكتب على شريحة NFC.
+            الصق من خرائط قوقل مباشرة — الاستخراج يبدأ تلقائياً.
           </p>
         )}
         <div className="mt-4 flex flex-wrap gap-2">
