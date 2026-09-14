@@ -1,0 +1,8 @@
+node_modules
+.vercel
+dist
+.output
+*.log
+screenshots
+artifacts
+routeTree.gen.ts
