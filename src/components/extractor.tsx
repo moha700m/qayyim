@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type ClipboardEvent, type ReactNode } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import {
   Check,
   Copy,
@@ -6,24 +6,23 @@ import {
   Link2,
   LoaderCircle,
   MapPin,
-  Nfc,
+  Share2,
+  Star,
 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { QrMark } from "@/components/qr-mark";
-import { MessageTemplates } from "@/components/message-templates";
 import { resolveMapsShare } from "@/lib/maps/resolve.functions";
 import {
   SAMPLE_FULL_URL,
   SAMPLE_SHARE_URL,
-  looksLikeMapsShare,
   needsUnfurl,
   parsePlaceFromText,
   toReviewLinks,
   type ReviewLinks,
 } from "@/lib/maps/parse";
 import { cn } from "@/lib/utils";
-import { canWriteWebNfc, fitsNtag213, nfcPayloadBytes, writeUrlToNfcTag } from "@/lib/nfc";
 
 const HISTORY_KEY = "qayyim-history-v1";
 
@@ -67,20 +66,15 @@ export function Extractor() {
   const [result, setResult] = useState<ReviewLinks | null>(null);
   const [copied, setCopied] = useState<string | null>(null);
   const [history, setHistory] = useState<HistoryItem[]>([]);
-  const [nfcWriting, setNfcWriting] = useState(false);
-  const [webNfc, setWebNfc] = useState(false);
-  const extractTimer = useRef<number | null>(null);
 
   useEffect(() => {
     setHistory(loadHistory());
-    setWebNfc(canWriteWebNfc());
   }, []);
 
-  useEffect(() => {
-    return () => {
-      if (extractTimer.current) window.clearTimeout(extractTimer.current);
-    };
-  }, []);
+  const canShare = useMemo(
+    () => typeof navigator !== "undefined" && typeof navigator.share === "function",
+    [],
+  );
 
   function remember(links: ReviewLinks) {
     const item: HistoryItem = {
@@ -126,30 +120,6 @@ export function Extractor() {
     }
   }
 
-  function extractNow(value: string) {
-    if (extractTimer.current) {
-      window.clearTimeout(extractTimer.current);
-      extractTimer.current = null;
-    }
-    void extract(value);
-  }
-
-  function queueExtract(value: string) {
-    if (!looksLikeMapsShare(value)) return;
-    if (extractTimer.current) window.clearTimeout(extractTimer.current);
-    extractTimer.current = window.setTimeout(() => {
-      void extract(value);
-    }, 350);
-  }
-
-  function onPasteShare(event: ClipboardEvent<HTMLTextAreaElement>) {
-    const text = event.clipboardData.getData("text");
-    if (!text.trim()) return;
-    setRaw(text);
-    if (error) setError(null);
-    if (looksLikeMapsShare(text)) extractNow(text);
-  }
-
   async function onCopy(value: string, key: string, label: string) {
     const ok = await copyText(value, label);
     if (ok) {
@@ -158,19 +128,14 @@ export function Extractor() {
     }
   }
 
-  async function onWriteNfc(url: string) {
-    setNfcWriting(true);
+  async function onShare(url: string) {
     try {
-      await writeUrlToNfcTag(url);
-      toast.success("كُتب الرابط على الشريحة. لمس للتحقق.");
-    } catch (error) {
-      const message =
-        error instanceof Error
-          ? error.message
-          : "قرّب الشريحة ثم أعد المحاولة، أو انسخ الرابط إلى NFC Tools.";
-      toast.error(message);
-    } finally {
-      setNfcWriting(false);
+      await navigator.share({
+        title: "رابط تقييم قوقل",
+        url,
+      });
+    } catch {
+      await onCopy(url, "share", "رابط التقييم");
     }
   }
 
@@ -186,33 +151,23 @@ export function Extractor() {
         <label htmlFor="maps-url" className="mb-3 block text-sm font-medium text-fg-muted">
           رابط المشاركة
         </label>
-        <div className="flex flex-col gap-3">
-          <textarea
+        <div className="flex flex-col gap-3 sm:flex-row">
+          <Input
             id="maps-url"
             dir="ltr"
-            rows={3}
+            inputMode="url"
             autoCapitalize="off"
             autoCorrect="off"
             spellCheck={false}
-            enterKeyHint="go"
-            placeholder="الصق رابط المشاركة هنا — حتى لو معه اسم المكان"
+            placeholder="https://maps.app.goo.gl/…"
             value={raw}
-            onPaste={onPasteShare}
             onChange={(event) => {
-              const value = event.target.value;
-              setRaw(value);
+              setRaw(event.target.value);
               if (error) setError(null);
-              queueExtract(value);
             }}
-            onKeyDown={(event) => {
-              if (event.key === "Enter" && !event.shiftKey) {
-                event.preventDefault();
-                extractNow(raw);
-              }
-            }}
-            className="min-h-24 w-full rounded-xl border border-border bg-surface px-4 py-3 text-left font-mono text-sm text-fg shadow-border transition-[border-color,box-shadow] duration-(--motion-quick) ease-(--ease-out) placeholder:font-sans placeholder:text-fg-subtle focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-bg"
+            className="text-left font-mono text-sm"
           />
-          <Button type="submit" size="lg" disabled={loading}>
+          <Button type="submit" size="lg" className="sm:min-w-36" disabled={loading}>
             {loading ? (
               <>
                 <LoaderCircle className="animate-spin" />
@@ -229,7 +184,7 @@ export function Extractor() {
           </p>
         ) : (
           <p className="mt-3 text-sm text-fg-subtle">
-            الصق من خرائط قوقل مباشرة — الاستخراج يبدأ تلقائياً.
+            اقبل روابط المشاركة القصيرة والروابط الكاملة ومعرّف المكان.
           </p>
         )}
         <div className="mt-4 flex flex-wrap gap-2">
@@ -274,67 +229,42 @@ export function Extractor() {
             </div>
 
             <LinkRow
-              icon={<Nfc className="size-4" />}
-              label="رابط الشريحة"
-              hint="اكتبه كسجل URL — اللمس يفتح نموذج التقييم"
+              icon={<Star className="size-4" />}
+              label="رابط كتابة تقييم"
+              hint="أرسله للعملاء — يفتح نموذج التقييم مباشرة"
               value={result.writeReviewUrl}
               copied={copied === "write"}
-              onCopy={() => onCopy(result.writeReviewUrl, "write", "رابط الشريحة")}
+              onCopy={() => onCopy(result.writeReviewUrl, "write", "رابط كتابة التقييم")}
               primary
             />
-            <p className="mt-2 text-xs text-fg-subtle">
-              {fitsNtag213(result.writeReviewUrl)
-                ? `جاهز لشريحة NTAG213 وأكبر — ${nfcPayloadBytes(result.writeReviewUrl)} بايت`
-                : "الرابط أطول من سعة NTAG213. استخدم NTAG215 أو 216."}
-            </p>
             <div className="mt-3 flex flex-col gap-2 sm:flex-row">
               <Button
                 type="button"
                 className="flex-1"
-                onClick={() => onCopy(result.writeReviewUrl, "write", "رابط الشريحة")}
+                onClick={() => onCopy(result.writeReviewUrl, "write", "رابط كتابة التقييم")}
               >
                 {copied === "write" ? <Check /> : <Copy />}
-                نسخ للشريحة
+                نسخ رابط التقييم
               </Button>
-              {webNfc ? (
+              {canShare ? (
                 <Button
                   type="button"
                   variant="secondary"
                   className="flex-1"
-                  disabled={nfcWriting}
-                  onClick={() => void onWriteNfc(result.writeReviewUrl)}
+                  onClick={() => void onShare(result.writeReviewUrl)}
                 >
-                  {nfcWriting ? <LoaderCircle className="animate-spin" /> : <Nfc />}
-                  اكتب على الشريحة
+                  <Share2 />
+                  مشاركة
                 </Button>
               ) : null}
               <Button type="button" variant="outline" asChild>
                 <a href={result.writeReviewUrl} target="_blank" rel="noreferrer">
                   <ExternalLink />
-                  تجربة الرابط
+                  فتح
                 </a>
               </Button>
             </div>
-            {!webNfc ? (
-              <ol className="mt-4 space-y-2 text-sm text-fg-muted">
-                <li>١. انسخ رابط الشريحة أعلاه.</li>
-                <li>٢. افتح تطبيق NFC Tools على الجوال.</li>
-                <li>٣. أضف سجلاً من نوع URL / URI والصق الرابط.</li>
-                <li>٤. اكتب على الشريحة، ثم لمسها بهاتف ثانٍ للتجربة.</li>
-              </ol>
-            ) : (
-              <p className="mt-4 text-sm text-fg-muted">
-                اضغط «اكتب على الشريحة» وقرّبها من خلف الهاتف. على الآيفون استخدم NFC Tools بعد النسخ.
-              </p>
-            )}
           </div>
-
-          <MessageTemplates
-            name={result.name ?? "المكان"}
-            url={result.writeReviewUrl}
-            copied={copied === "msg"}
-            onCopy={(text) => void onCopy(text, "msg", "الرسالة")}
-          />
 
           <div className="grid gap-4 sm:grid-cols-[1fr_auto]">
             <div className="flex flex-col gap-3 rounded-[28px] bg-elevated p-5 shadow-border">
@@ -375,9 +305,9 @@ export function Extractor() {
 
       <section className="grid gap-3 sm:grid-cols-3">
         {[
-          { n: "١", t: "استخرج الرابط", d: "من رابط المشاركة في خرائط قوقل." },
-          { n: "٢", t: "انسخه للشريحة", d: "رابط التقييم القصير، مو رابط المشاركة." },
-          { n: "٣", t: "اكتبه كـ URL", d: "NFC Tools → سجل رابط → اكتب ثم لمس للتجربة." },
+          { n: "١", t: "افتح المكان", d: "من خرائط قوقل على الجوال أو المتصفح." },
+          { n: "٢", t: "انسخ رابط المشاركة", d: "مشاركة ثم نسخ الرابط." },
+          { n: "٣", t: "الصقه هنا", d: "نُخرج رابط التقييم وباركوده فوراً." },
         ].map((step) => (
           <div key={step.n} className="rounded-[24px] bg-elevated/80 px-4 py-4 shadow-border">
             <p className="font-display text-xl text-accent">{step.n}</p>

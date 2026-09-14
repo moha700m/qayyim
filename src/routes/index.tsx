@@ -18,14 +18,14 @@ function Home() {
             </svg>
           </span>
           <div>
-            <p className="text-xs font-medium text-fg-subtle">رابط تقييم لشريحة NFC</p>
+            <p className="text-xs font-medium text-fg-subtle">من رابط المشاركة إلى التقييم</p>
             <h1 className="font-display text-3xl font-semibold tracking-tight text-fg sm:text-4xl">
               قيِّم
             </h1>
           </div>
         </div>
         <p className="max-w-md text-base leading-relaxed text-fg-muted">
-          الصق رابط المشاركة من خرائط قوقل، ثم انسخ رابط التقييم واكتبه على الشريحة. اللمس يفتح نموذج قوقل مباشرة.
+          الصق رابط المشاركة من خرائط قوقل واحصل على رابط كتابة التقييم، ورابط صفحة التقييمات، وباركود جاهز للطباعة.
         </p>
       </header>
       <div className="relative">

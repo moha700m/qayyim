@@ -200,18 +200,6 @@ export function needsUnfurl(input: string): boolean {
   }
 }
 
-export function looksLikeMapsShare(text: string): boolean {
-  const candidate = extractUrlCandidate(text);
-  if (!candidate) return false;
-  if (!candidate.includes("://") && PLACE_ID_RE.test(candidate)) return true;
-  try {
-    const url = new URL(candidate);
-    return isGoogleMapsHost(url.hostname);
-  } catch {
-    return false;
-  }
-}
-
 export function toReviewLinks(place: ExtractedPlace): ReviewLinks {
   return {
     ...place,
